@@ -1,188 +1,107 @@
-\documentclass[10pt]{article}
-\usepackage[a4paper]{geometry}
-\usepackage{graphicx}
-\usepackage{amsmath}
-\usepackage{dirtytalk}
-\usepackage{caption}
-\usepackage{subcaption}
-\usepackage{hyperref}
-\usepackage{float}
+clc
+clear variables
+close all
 
-\setlength{\oddsidemargin}{0in}
-\setlength{\evensidemargin}{0in}
-\setlength{\textheight}{9in}
-\setlength{\textwidth}{6.5in}
-\setlength{\topmargin}{-0.5in}
+H = imread('haze.bmp');
+% imshowFigure(H)
 
-\newcommand{\startQ}[0]{Write a function with:}
+I = rgb2gray(H);
+imshowFigure(I)
 
-\newcounter{question}
-\newenvironment{QuestionEnv}[1][]{\setlength{\parindent}{0pt}\refstepcounter{question}\par\medskip
-   \textbf{Q\thequestion. #1}\rmfamily}{\medskip}
+negativeImage = negativeIm(I);
+% imshowFigure(negativeImage)
 
-\newcommand{\Q}[1]{{\begin{QuestionEnv}#1\end{QuestionEnv}}}
+padded = whitePadIm(I,[10,10]);
+% imshowFigure(padded)
 
-\title{Image and Video Compression}
-\author{Ex1}
-\date{March 2021}
+flipped = flipHorizontal(I);
+% imshowFigure(flipped)
 
-\begin{document}
+% structMat = splitMat2Struct(I,[45 44]);
+structMat = splitMat2Struct(I,[5, 5]);
+% newMat = structMat2Mat(structMat);
 
-\maketitle
+flippedStruct = applayFunc2StructMat(structMat, @flipHorizontal);
+flippedStruct = applayFunc2StructMat(flippedStruct, @flipVertical);
+newFlippedMat = structMat2Mat(flippedStruct);
+imshowFigure(newFlippedMat)
 
-This is a simple exercise 
-The aim of this exercise is to remind students 
-In this exercise you will learn to use Matlab 
+imwrite(newFlippedMat,'newFlippedMat.bmp')
 
-\section{Basic image manipulations}
-\Q{Loading a BMP image in B\textbackslash W}
-\begin{quote} 
-    \startQ 
-    \begin{itemize}
-        \item Input: string representing a path to a BMP image.
-        \item Output: Matrix.
-        \item Functionality: Returns a B\textbackslash W representation of the image.
-    \end{itemize} 
-\end{quote}
+negativeStruct = applayFunc2StructMat(structMat, @negativeIm);
+newNegativedMat = structMat2Mat(negativeStruct);
+imshowFigure(newNegativedMat)
 
-\Q{Flip matrix} 
-\begin{quote}
-    \thequestion.a: \startQ
-    \begin{itemize}
-        \item Input: Matrix.
-        \item Output: Matrix.
-        \item Functionality: Returns the matrix flipped over the horizontal axis.
-    \end{itemize}
-    \thequestion.b: \startQ
-    \begin{itemize}
-        \item Input: Matrix.
-        \item Output: Matrix.
-        \item Functionality: Returns the matrix flipped over the vertical axis.
-    \end{itemize}    
-\end{quote}
+paddedStruct = applayFunc2StructMat(structMat, @(im) whitePadIm(im, [1,1]));
+newPaddeddMat = structMat2Mat(paddedStruct);
+imshowFigure(newPaddeddMat)
 
-\Q{Negative image}
-\begin{quote} 
-    \startQ
-    \begin{itemize}
-        \item Input: Matrix representing an image.
-        \item Output: Matrix.
-        \item Functionality: Returns negative of the image.
-    \end{itemize} 
-    Tip: Recall the importance of the type of a matrix, and notice the max value of the matrix data type.
-\end{quote}
+imwrite(newPaddeddMat,'newPaddeddMat.bmp')
 
-\Q{White frame\textbackslash padding}
-\begin{quote} 
-    \startQ
-    \begin{itemize}
-        \item Input: Matrix of size (m,n), and an integer $d\geq0$
-        \item Output: A \textbf{larger} matrix with size $(m+2d,n+2d)$.
-        \item Functionality: Returns the matrix with additional \textbf{white} padding surrounding the image of length $d$ from all sides.
-    \end{itemize} 
-\end{quote}
+clearedCellStruct = structMat;
+clearedCellStruct(3,3).submat = ones(size(clearedCellStruct(3,3).submat),class(clearedCellStruct(3,3).submat))*255;
+newClearedCellMat = structMat2Mat(clearedCellStruct);
+imshowFigure(newClearedCellMat);
 
-\section{Using Structure Arrays}
+imwrite(newClearedCellMat,'newClearedCellMat.bmp')
 
-\Q{Binning a matrix}
-\begin{quote} 
-    \startQ
-    \begin{itemize}
-        \item Input: Matrix of size (m,n), and $d>0$ s.t. $n~(\text{mod } d) = m~(\text{mod } d )= 0$ .
-        \item Output: A struct array of size $(m/d,n/d)$.
-        \item Functionality: The function splits the matrix into $d\times d$ matrices and save each of them as a struct.
-    \end{itemize} 
-    Tip: Since structure arrays contain data in fields that you access by name, you may want to \say{save} other info in additional fields for future use (see next question).
-\end{quote}
+function imshowFigure(im)
+	figure
+	imshow(im)
+end
 
-\Q{Un-binning back to matrix}
-\begin{quote} 
-    \startQ
-    \begin{itemize}
-        \item Input: A struct array with the output of the last question
-        \item Output: A matrix
-        \item Functionality: Reconstructs a matrix out of the struct array.
-    \end{itemize} 
-\end{quote}
+function newtructMat = applayFunc2StructMat(structMat, func)
+	structMatSize = size(structMat);
+	for i = 1:structMatSize(1)
+		for j = 1:structMatSize(2)
+			structMat(i,j).submat = func(structMat(i,j).submat);
+			structMat(i,j).origin = [1 + (i-1)*size(structMat(i,j).submat,1), 1 + (j-1)*size(structMat(i,j).submat,2)];
+		end
+	end
 
-\section{Combining everything together}
-In this section, you need to combine what you implemented in the last sections.
-Tip: It might be useful to send a function as a parameter which is done in Matlab by \say{@foo} for some function foo. (For those who really want to make it as functional as possible, I recommend you look at how to use \href{http://www.latex-tutorial.com}{curry functions in Matlab}. )
+	newtructMat = structMat;
+end
 
-\Q{Clear a cell}
-\begin{quote} 
-    \startQ
-    \begin{itemize}
-        \item Input: A BMP image, and $d>0$ s.t. $n~(\text{mod } d) = m~(\text{mod } d )= 0$, and indexes $i,j$
-        \item Output: A BMP image of the same size
-        \item Functionality: The functions simply colors the block $i,j$ with white
-    \end{itemize}
-    Example:
-    \begin{figure}[H]
-        \centering
-        \begin{subfigure}{.5\textwidth}
-          \centering
-          \includegraphics[width=.6\textwidth]{Images/haze.png}
-          \caption{Before}
-        \end{subfigure}%
-        \begin{subfigure}{.5\textwidth}
-          \centering
-          \includegraphics[width=.6\linewidth]{Images/ClearedCell.png}
-          \caption{After}
-        \end{subfigure}
-        \caption{Before and after with $d=5$ and $\{i,j\}=\{3,3\}$}
-    \end{figure}
-\end{quote}
+function structMat = splitMat2Struct(mat, blockSizeArray)
+	matSize = size(mat);
+	reshapedMat = permute(reshape(mat, blockSizeArray(1), matSize(1) / blockSizeArray(1), blockSizeArray(2), matSize(2) / blockSizeArray(2)), [2, 4, 1, 3]);
+	structMat(matSize(1)/blockSizeArray(1),matSize(2)/blockSizeArray(2)).submat = zeros(size(reshapedMat(1,1,:,:)), class(size(reshapedMat(1,1,:,:))));
+	structMat(matSize(1)/blockSizeArray(1),matSize(2)/blockSizeArray(2)).origin = [0,0];
+	for i = 1:matSize(1)/blockSizeArray(1)
+		for j = 1:matSize(2)/blockSizeArray(2)
+			bla = reshapedMat(i,j,:,:);
+			structMat(i,j).submat = reshape(bla, blockSizeArray(1), blockSizeArray(2));
+			structMat(i,j).origin = [1 + (i-1)*blockSizeArray(1), 1 + (j-1)*blockSizeArray(2)];
+		end
+	end
+end
 
 
-\Q{Flipping sub matrices}
-\begin{quote} 
-    \startQ
-    \begin{itemize}
-        \item Input: A BMP image, and $d>0$ s.t. $n~(\text{mod } d) = m~(\text{mod } d )= 0$ .
-        \item Output: A BMP image of the same size
-        \item Functionality: The functions splits the image, flips each sub-image in both axis directions, plots the new figure and returns the resulting image.
-    \end{itemize} 
-    Example:
-    \begin{figure}[H]
-        \centering
-        \begin{subfigure}{.5\textwidth}
-          \centering
-          \includegraphics[width=.6\textwidth]{Images/haze.png}
-          \caption{Before}
-        \end{subfigure}%
-        \begin{subfigure}{.5\textwidth}
-          \centering
-          \includegraphics[width=.6\linewidth]{Images/Flipped.png}
-          \caption{After}
-        \end{subfigure}
-        \caption{Before and after with $d=5$}
-    \end{figure}
-\end{quote}
+function mat = structMat2Mat(structMat)
+	structMatSize = size(structMat);
+	blockSize = [size(structMat(1,1).submat,1), size(structMat(1,1).submat,2)];
+	mat = zeros([structMatSize(1)*blockSize(1), structMatSize(2)*blockSize(2)], class(structMat(1,1).submat));
+	for i = 1:structMatSize(1)
+		for j = 1:structMatSize(2)
+			mat(structMat(i,j).origin(1):structMat(i,j).origin(1)+blockSize(1)-1,...
+				structMat(i,j).origin(2):structMat(i,j).origin(2)+blockSize(2)-1) = structMat(i,j).submat;
+		end
+	end
+end
 
-\Q{Padding sub matrices}
-\begin{quote} 
-    \startQ
-    \begin{itemize}
-        \item Input: A BMP image, and $d>0$ s.t. $n~(\text{mod } d) = m~(\text{mod } d )= 0$, and $c>0$.
-        \item Output: A \textbf{larger} BMP image
-        \item Functionality: The functions splits the image, pads from all directions of length $c$ each sub matrix with white, plots the new figure and returns the resulting image.
-    \end{itemize} 
-    Example:
-    \begin{figure}[H]
-        \centering
-        \begin{subfigure}{.5\textwidth}
-          \centering
-          \includegraphics[width=.6\textwidth]{Images/haze.png}
-          \caption{Before}
-        \end{subfigure}%
-        \begin{subfigure}{.5\textwidth}
-          \centering
-          \includegraphics[width=.6\linewidth]{Images/Padded.png}
-          \caption{After}
-        \end{subfigure}
-        \caption{Before and after with $d=5$ and $c=1$}
-    \end{figure}
-\end{quote}
+function negative = negativeIm(im)
+	negative = 255 - im;
+end
 
-\end{document}
+function flipped = flipHorizontal(mat)
+	flipped = flip(mat,2);
+end
+
+function flipped = flipVertical(mat)
+	flipped = flip(mat,1);
+end
+
+function padded = whitePadIm(im, paddingValArray)
+	padded = ones(size(im,1)+2*paddingValArray(1),size(im,2)+2*paddingValArray(2),'like',im)*255;
+	padded(paddingValArray(1):end-(paddingValArray(1)+1),paddingValArray(2):end-(paddingValArray(2)+1)) = im;
+end
