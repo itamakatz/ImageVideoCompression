@@ -11,13 +11,7 @@ decArray = [0 8 17;
 
 im = imread('Mona-Lisa.bmp');
 
-% q10(im, 4, 0)
-% q10(im, 4, 0)
-r = randi([-1000 1000],1,1000);
-rUnsigned = arrayfun(@ToUnsigned, r);
-rSigned = arrayfun(@ToSigned, rUnsigned);
-
-isequal(r,rSigned)
+q10(im, 4, 0)
 
 function len = q10(im, n, k)
 	len = 0;
@@ -38,9 +32,10 @@ end
 function lengthArray = expGolombLengths(array, k)
 	% unsigned = arrayfun(@(x)ToUnsigned(x), array)
 	ys = arrayfun(@(x)floor(x/2.^k), array);
-	lengthArray = arrayfun(@(x)2*floor(log2(x+1))+1, ys) + k;
+	lengthArray = arrayfun(@(x)2*floor(log2(double(x+1)))+1, ys) + k;
 end
 
+% Tested
 function val = ToUnsigned(x)
 	if(x > 0)
 		val = 2*x-1;
@@ -49,8 +44,9 @@ function val = ToUnsigned(x)
 	end
 end
 
+% Tested
 function val = ToSigned(x)
-	if(x > 0)
+	if(mod(x,2))
 		val = (x+1)/2;
 	else
 		val = x/-2;
