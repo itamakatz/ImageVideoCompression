@@ -5,8 +5,11 @@ close all
 H = imread('haze.bmp');
 % imshowFigure(H)
 
-I = rgb2gray(H);
-imshowFigure(I)
+iGray = rgb2gray(H);
+% imshowFigure(I)
+imwrite(iGray,'hazeGray.bmp')
+
+I = imread('hazeGray.bmp');
 
 negativeImage = negativeIm(I);
 % imshowFigure(negativeImage)
