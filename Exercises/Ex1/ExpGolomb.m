@@ -14,30 +14,78 @@ im = imread('Mona-Lisa.bmp');
 % q11(im, 4, 0)
 % q11(im, 16, 0)
 % optimize_q11(im)
-% q12_encode(im, 4, 2)
-k=2
-lenPractical = arrayfun(@(x) length(encode_number(x,k)),decArray)
-lenTheoretical = expGolombLengths(decArray,k)
-isequal(lenPractical, lenTheoretical)
-% encode_number_zero_based(8+2*2-1)
-
+binPath = 'encodeIm.bin'
+% q12_encode(im, binPath, 4, 2);
+% q12_dencode(binPath)
+encode_number_zero_based(7)
 function im = q12_dencode(binPath)
+	fileID = fopen(binPath,'r');
+	k = fread(fileID, 1, '*ubit8');
+	n = fread(fileID, 1, '*ubit8');
+	imDim1 = fread(fileID, 1, '*ubit16');
+	imDim2 = fread(fileID, 1, '*ubit16');
 
+	subDim1 = imDim1/n;
+	subDim2 = imDim2/n;
+
+	block_pixels = subDim1*subDim2;
+
+	blocks = cell(n,n);
+
+	for i = 1:n
+		for j = 1:n
+			blocks(i,j)	= struct('mean', -1, 'pixels', cell(subDim1, subDim2));
+			m = fread(fileID, 1, '*ubit8');
+			blocks(i,j).mean = m
+			count = 0
+			while (count < block_pixels)
+				bits_to_read = k;
+				prefix_zeros = 0;
+				bits = []
+				while(fread(fileID, 1, '*ubit1') == 0)
+					bits = [bits 0];
+					prefix_zeros = prefix_zeros + 1;
+				end
+				bits = [bits 1];
+				fread(fileID, 1, '*ubit1')
+				for i = range(prefix_zeros)
+					
+				end
+				count = count + 1;
+			end
+
+		end
+	end
+	while ~feof(fileID)
+		tline = fgetl(fid);
+		disp(tline)
+	end
+	fclose(fileID);
 end
 
+% Tested
 function q12_encode(im, binPath, n, k)
 	structMat = splitMat2Struct(im, n);
 	fileID = fopen(binPath,'w');
+	fwrite(fileID, k, 'ubit8');
+	fwrite(fileID, n, 'ubit8');
+	fwrite(fileID, size(structMat,1), 'ubit16');
+	fwrite(fileID, size(structMat,2), 'ubit16');
 	for i = 1:size(structMat,1)
 		for j = 1:size(structMat,2)
 			submat = structMat(i,j).submat;
 			submat = cast(submat,'int16');
-			m = mean(submat,'all');
-			fwrite(fileID, m, 'ubit8')
-
+			m = round(mean(submat,'all'));
+			mDiff = submat - m;
+			unsignedVals = arrayfun(@(x)ToUnsigned(x), mDiff);
+			charCellsVals = arrayfun(@(x)encode_number(x, k), unsignedVals, 'UniformOutput', false);
+			charCellsVals = reshape(charCellsVals', 1, numel(charCellsVals)); % note the transpose of the matrix
+			charArrayVals = cell2mat(charCellsVals);
+			fwrite(fileID, m, 'ubit1');
+			fwrite(fileID, charArrayVals, 'ubit1');
 		end
 	end
-	fclose(fileID)
+	fclose(fileID);
 end
 
 % Tested
@@ -53,16 +101,27 @@ function codeBits = encode_number_zero_based(num)
 	codeBits = [(zeros(1,len)+'0') numCharArray];
 end
 
-% Best is n=4, k=2
+function codeBits = dencode_number(num, k)
+	uncutCode = encode_number_zero_based(num+2.^k-1);
+	codeBits = uncutCode(k+1:end);
+end
+
+function codeBits = dencode_number_zero_based(num)
+	numCharArray = dec2bin(num+1);
+	len = length(numCharArray)-1;
+	codeBits = [(zeros(1,len)+'0') numCharArray];
+end
+
+% Best is n=4, k=2, totalLength: 3813686 bits = 476710.75 bytes
 function optimal = optimize_q11(im)
-	optimal = struct("n",-1,"k",-1,"meanLength",-1);
+	optimal = struct("n",-1,"k",-1,"totalLength",-1);
 	for n = [4,8,16,24,48]
 		for k = 0:7
 			lengths = q11(im, n, k);
-			meanLength = sum(lengths,'all');
-			disp(['n: ' num2str(n) ', k: ' num2str(k), ', meanLength: ' num2str(meanLength)])
-			if(optimal.meanLength == -1 || optimal.meanLength > meanLength)
-				optimal = struct("n", n, "k", k, "meanLength", meanLength);
+			totalLength = sum(lengths,'all');
+			disp(['n: ' num2str(n) ', k: ' num2str(k), ', totalLength: ' num2str(totalLength)])
+			if(optimal.totalLength == -1 || optimal.totalLength > totalLength)
+				optimal = struct("n", n, "k", k, "totalLength", totalLength);
 			end
 		end
 	end
@@ -75,7 +134,7 @@ function len = q11(im, n, k)
 		for j = 1:size(structMat,2)
 			submat = structMat(i,j).submat;
 			submat = cast(submat,'int16');
-			m = mean(submat,'all');
+			m = round(mean(submat,'all'));
 			mDiff = submat - m;
 			unsignedVals = arrayfun(@(x)ToUnsigned(x), mDiff);
 			len = len + expGolombLengths(unsignedVals, k) + 8;
