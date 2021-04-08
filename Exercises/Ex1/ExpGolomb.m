@@ -1,6 +1,6 @@
-clc
-clear variables
-close all
+% clc
+% clear variables
+% close all
 
 decArray = [0 8 17;
 			5 9 27];
@@ -11,16 +11,70 @@ decArray = [0 8 17;
 
 im = imread('Mona-Lisa.bmp');
 
-q10(im, 4, 0)
+% q11(im, 4, 0)
+% q11(im, 16, 0)
+% optimize_q11(im)
+% q12_encode(im, 4, 2)
+k=2
+lenPractical = arrayfun(@(x) length(encode_number(x,k)),decArray)
+lenTheoretical = expGolombLengths(decArray,k)
+isequal(lenPractical, lenTheoretical)
+% encode_number_zero_based(8+2*2-1)
 
-function len = q10(im, n, k)
+function im = q12_dencode(binPath)
+
+end
+
+function q12_encode(im, binPath, n, k)
+	structMat = splitMat2Struct(im, n);
+	fileID = fopen(binPath,'w');
+	for i = 1:size(structMat,1)
+		for j = 1:size(structMat,2)
+			submat = structMat(i,j).submat;
+			submat = cast(submat,'int16');
+			m = mean(submat,'all');
+			fwrite(fileID, m, 'ubit8')
+
+		end
+	end
+	fclose(fileID)
+end
+
+% Tested
+function codeBits = encode_number(num, k)
+	uncutCode = encode_number_zero_based(num+2.^k-1);
+	codeBits = uncutCode(k+1:end);
+end
+
+% Tested
+function codeBits = encode_number_zero_based(num)
+	numCharArray = dec2bin(num+1);
+	len = length(numCharArray)-1;
+	codeBits = [(zeros(1,len)+'0') numCharArray];
+end
+
+% Best is n=4, k=2
+function optimal = optimize_q11(im)
+	optimal = struct("n",-1,"k",-1,"meanLength",-1);
+	for n = [4,8,16,24,48]
+		for k = 0:7
+			lengths = q11(im, n, k);
+			meanLength = sum(lengths,'all');
+			disp(['n: ' num2str(n) ', k: ' num2str(k), ', meanLength: ' num2str(meanLength)])
+			if(optimal.meanLength == -1 || optimal.meanLength > meanLength)
+				optimal = struct("n", n, "k", k, "meanLength", meanLength);
+			end
+		end
+	end
+end
+
+function len = q11(im, n, k)
 	len = 0;
 	structMat = splitMat2Struct(im, n);
-	structMatSize = size(structMat);
-	for i = 1:structMatSize(1)
-		for j = 1:structMatSize(2)
+	for i = 1:size(structMat,1)
+		for j = 1:size(structMat,2)
 			submat = structMat(i,j).submat;
-			submat = cast(submat,'int8');
+			submat = cast(submat,'int16');
 			m = mean(submat,'all');
 			mDiff = submat - m;
 			unsignedVals = arrayfun(@(x)ToUnsigned(x), mDiff);
@@ -29,6 +83,7 @@ function len = q10(im, n, k)
 	end
 end
 
+% Tested
 function lengthArray = expGolombLengths(array, k)
 	% unsigned = arrayfun(@(x)ToUnsigned(x), array)
 	ys = arrayfun(@(x)floor(x/2.^k), array);
