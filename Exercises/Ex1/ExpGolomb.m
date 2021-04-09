@@ -15,12 +15,14 @@ im = imread('Mona-Lisa.bmp');
 % q11(im, 16, 0)
 % optimize_q11(im)
 binPath = 'encodeIm.bin';
-% q12_encode(im, binPath, 4, 2);
+q12_encode(im, binPath, 4, 2);
 im2 = q12_dencode(binPath);
 im2 = cast(im2,'uint8');
 imwrite(im2,'decoded.bmp');
 imshow(im2);
 lala = 0;
+
+% Tested
 function im = q12_dencode(binPath)
 	fileID = fopen(binPath,'r');
 
@@ -32,22 +34,15 @@ function im = q12_dencode(binPath)
 
 	subDim1 = imDim1/n;
 	subDim2 = imDim2/n;
-
 	block_pixels = n*n;
-
-	% blocks(n,n) = struct('mean', -1);
-	% blocks(n,n).pixels = zeros(subDim1,subDim2);
 
 	im = zeros(imDim1, imDim2);
 
 	% parsing the file into a struct array containing all the number encodings
 	for i = 1:subDim1
 		for j = 1:subDim2
-			% blocks(i,j).mean = -1;
-			% blocks(i,j).pixels = zeros(subDim1,subDim2);
 			m = fread(fileID, 1, '*ubit8', 'ieee-be');
 			m = cast(m,'int16');
-			% blocks(i,j).mean = m;
 			pixelCount = 0;
 			blockPixels = zeros(1,n*n);
 			while (pixelCount < block_pixels)
@@ -60,14 +55,10 @@ function im = q12_dencode(binPath)
 				signedVal = ToSigned(cast(val,'int16'));
 				originalVal = signedVal + m;
 				blockPixels(pixelCount+1) = originalVal;
-				% im(subDim1*(i-1) + mod(pixelCount,subDim1)+1, subDim2*(j-1) + fix(pixelCount/subDim1)*subDim1+1) = originalVal;
-				% blocks(i,j).pixels(mod(pixelCount,subDim1)+1, fix(pixelCount/subDim1)*subDim1+1) = val;
 				pixelCount = pixelCount + 1;
 			end
 			
 			im(n*(i-1)+1:n*(i), n*(j-1)+1:n*(j)) = reshape(blockPixels,[n, n])'; %note the tranpose
-
-			disp(['i:' num2str(i) ', j:' num2str(j) ', pixelCount:' num2str(pixelCount)])
 		end
 	end
 
@@ -78,7 +69,6 @@ end
 function q12_encode(im, binPath, n, k)
 	structMat = splitMat2Struct(im, n);
 	fileID = fopen(binPath,'w');
-	% txtFileID = fopen([binPath '.txt'],'w');
 	fwrite(fileID, k, 'ubit8', 'ieee-be');
 	fwrite(fileID, n, 'ubit8', 'ieee-be');
 	fwrite(fileID, size(im,1), 'ubit16', 'ieee-be');
@@ -90,8 +80,6 @@ function q12_encode(im, binPath, n, k)
 			m = round(mean(submat,'all'));
 			mDiff = submat - m;
 			unsignedVals = arrayfun(@(x)ToUnsigned(x), mDiff)'; % note the transpose of the matrix!
-			% fprintf(txtFileID,'%d,', m);
-			% fprintf(txtFileID,'%d,', unsignedVals);
 			charCellsVals = arrayfun(@(x)encode_number(x, k), unsignedVals, 'UniformOutput', false);
 			charCellsVals = reshape(charCellsVals, 1, numel(charCellsVals));
 			charArrayVals = cell2mat(charCellsVals);
@@ -100,7 +88,6 @@ function q12_encode(im, binPath, n, k)
 		end
 	end
 	fclose(fileID);
-	% fclose(txtFileID);
 end
 
 % Tested
@@ -161,7 +148,6 @@ end
 
 % Tested
 function lengthArray = expGolombLengths(array, k)
-	% unsigned = arrayfun(@(x)ToUnsigned(x), array)
 	ys = arrayfun(@(x)floor(x/2.^k), array);
 	lengthArray = arrayfun(@(x)2*floor(log2(double(x+1)))+1, ys) + k;
 end
