@@ -14,52 +14,63 @@ im = imread('Mona-Lisa.bmp');
 % q11(im, 4, 0)
 % q11(im, 16, 0)
 % optimize_q11(im)
-binPath = 'encodeIm.bin'
+binPath = 'encodeIm.bin';
 % q12_encode(im, binPath, 4, 2);
-% q12_dencode(binPath)
-encode_number_zero_based(7)
+im2 = q12_dencode(binPath);
+im2 = cast(im2,'uint8');
+imwrite(im2,'decoded.bmp');
+imshow(im2);
+lala = 0;
 function im = q12_dencode(binPath)
 	fileID = fopen(binPath,'r');
-	k = fread(fileID, 1, '*ubit8');
-	n = fread(fileID, 1, '*ubit8');
-	imDim1 = fread(fileID, 1, '*ubit16');
-	imDim2 = fread(fileID, 1, '*ubit16');
+
+	k = cast(fread(fileID, 1, '*ubit8', 'ieee-be'),'uint16');
+	n = cast(fread(fileID, 1, '*ubit8', 'ieee-be'),'uint16');
+	imDim1 = fread(fileID, 1, '*ubit16', 'ieee-be');
+	imDim2 = fread(fileID, 1, '*ubit16', 'ieee-be');
+	
 
 	subDim1 = imDim1/n;
 	subDim2 = imDim2/n;
 
-	block_pixels = subDim1*subDim2;
+	block_pixels = n*n;
 
-	blocks = cell(n,n);
+	% blocks(n,n) = struct('mean', -1);
+	% blocks(n,n).pixels = zeros(subDim1,subDim2);
 
-	for i = 1:n
-		for j = 1:n
-			blocks(i,j)	= struct('mean', -1, 'pixels', cell(subDim1, subDim2));
-			m = fread(fileID, 1, '*ubit8');
-			blocks(i,j).mean = m
-			count = 0
-			while (count < block_pixels)
-				bits_to_read = k;
+	im = zeros(imDim1, imDim2);
+
+	% parsing the file into a struct array containing all the number encodings
+	for i = 1:subDim1
+		for j = 1:subDim2
+			% blocks(i,j).mean = -1;
+			% blocks(i,j).pixels = zeros(subDim1,subDim2);
+			m = fread(fileID, 1, '*ubit8', 'ieee-be');
+			m = cast(m,'int16');
+			% blocks(i,j).mean = m;
+			pixelCount = 0;
+			blockPixels = zeros(1,n*n);
+			while (pixelCount < block_pixels)
 				prefix_zeros = 0;
-				bits = []
-				while(fread(fileID, 1, '*ubit1') == 0)
-					bits = [bits 0];
+				while(fread(fileID, 1, '*ubit1', 'ieee-be') == 0)
 					prefix_zeros = prefix_zeros + 1;
 				end
-				bits = [bits 1];
-				fread(fileID, 1, '*ubit1')
-				for i = range(prefix_zeros)
-					
-				end
-				count = count + 1;
+				bits = [zeros(1,prefix_zeros)+'0' '1' char(fread(fileID, prefix_zeros + k, '*ubit1', 'ieee-be')+'0')'];
+				val = dencode_number(bits, k);
+				signedVal = ToSigned(cast(val,'int16'));
+				originalVal = signedVal + m;
+				blockPixels(pixelCount+1) = originalVal;
+				% im(subDim1*(i-1) + mod(pixelCount,subDim1)+1, subDim2*(j-1) + fix(pixelCount/subDim1)*subDim1+1) = originalVal;
+				% blocks(i,j).pixels(mod(pixelCount,subDim1)+1, fix(pixelCount/subDim1)*subDim1+1) = val;
+				pixelCount = pixelCount + 1;
 			end
+			
+			im(n*(i-1)+1:n*(i), n*(j-1)+1:n*(j)) = reshape(blockPixels,[n, n])'; %note the tranpose
 
+			disp(['i:' num2str(i) ', j:' num2str(j) ', pixelCount:' num2str(pixelCount)])
 		end
 	end
-	while ~feof(fileID)
-		tline = fgetl(fid);
-		disp(tline)
-	end
+
 	fclose(fileID);
 end
 
@@ -67,25 +78,29 @@ end
 function q12_encode(im, binPath, n, k)
 	structMat = splitMat2Struct(im, n);
 	fileID = fopen(binPath,'w');
-	fwrite(fileID, k, 'ubit8');
-	fwrite(fileID, n, 'ubit8');
-	fwrite(fileID, size(structMat,1), 'ubit16');
-	fwrite(fileID, size(structMat,2), 'ubit16');
+	% txtFileID = fopen([binPath '.txt'],'w');
+	fwrite(fileID, k, 'ubit8', 'ieee-be');
+	fwrite(fileID, n, 'ubit8', 'ieee-be');
+	fwrite(fileID, size(im,1), 'ubit16', 'ieee-be');
+	fwrite(fileID, size(im,2), 'ubit16', 'ieee-be');
 	for i = 1:size(structMat,1)
 		for j = 1:size(structMat,2)
 			submat = structMat(i,j).submat;
 			submat = cast(submat,'int16');
 			m = round(mean(submat,'all'));
 			mDiff = submat - m;
-			unsignedVals = arrayfun(@(x)ToUnsigned(x), mDiff);
+			unsignedVals = arrayfun(@(x)ToUnsigned(x), mDiff)'; % note the transpose of the matrix!
+			% fprintf(txtFileID,'%d,', m);
+			% fprintf(txtFileID,'%d,', unsignedVals);
 			charCellsVals = arrayfun(@(x)encode_number(x, k), unsignedVals, 'UniformOutput', false);
-			charCellsVals = reshape(charCellsVals', 1, numel(charCellsVals)); % note the transpose of the matrix
+			charCellsVals = reshape(charCellsVals, 1, numel(charCellsVals));
 			charArrayVals = cell2mat(charCellsVals);
-			fwrite(fileID, m, 'ubit1');
-			fwrite(fileID, charArrayVals, 'ubit1');
+			fwrite(fileID, m, 'ubit8', 'ieee-be');
+			fwrite(fileID, charArrayVals-'0', 'ubit1', 'ieee-be');
 		end
 	end
 	fclose(fileID);
+	% fclose(txtFileID);
 end
 
 % Tested
@@ -101,15 +116,17 @@ function codeBits = encode_number_zero_based(num)
 	codeBits = [(zeros(1,len)+'0') numCharArray];
 end
 
-function codeBits = dencode_number(num, k)
-	uncutCode = encode_number_zero_based(num+2.^k-1);
-	codeBits = uncutCode(k+1:end);
+% Tested
+function num = dencode_number(codeBits, k)
+	codeBitsFull = [zeros(1,k)+'0' codeBits];
+	num = dencode_number_zero_based(codeBitsFull)-2.^k+1 ;
 end
 
-function codeBits = dencode_number_zero_based(num)
-	numCharArray = dec2bin(num+1);
-	len = length(numCharArray)-1;
-	codeBits = [(zeros(1,len)+'0') numCharArray];
+% Tested
+function num = dencode_number_zero_based(codeBits)
+	cutIndex = find(codeBits-'0', 1, 'first');
+	codeBitsCut = codeBits(cutIndex:end);
+	num = bi2de(codeBitsCut-'0','left-msb')-1;
 end
 
 % Best is n=4, k=2, totalLength: 3813686 bits = 476710.75 bytes
@@ -197,3 +214,12 @@ function mat = structMat2Mat(structMat)
 		end
 	end
 end
+
+
+% == TESTS == 
+% pairs = [struct('a',66,'k',1), 
+% 		 struct('a',180,'k',2),
+% 		 struct('a',15,'k',1),
+% 		 struct('a',999,'k',7)];
+
+% arrayfun(@(x)(dencode_number(encode_number(x.a,x.k),x.k) == x.a), pairs)
