@@ -1,14 +1,8 @@
-M = randi(100, [5 6]);                      %# input matrix
-% M = 1:25;
-% k=5;
-% M = reshape(M, [fix(size(M,2)/k),k]);
-
-M
-zigZagArray = zigZag(M)
+M = randi(100, [5 6])
+zigZagArray = zigZag(M);
 restoreM = zigZagInverse(zigZagArray, size(M))
 
 isequal(M, restoreM)
-
 
 function zigZagArray = zigZag(mat)
 	ind = reshape(1:numel(mat), size(mat));   %# indices of elements
@@ -25,9 +19,7 @@ function mat = zigZagInverse(zigZagArray, imSize)
 	mat = zeros(imSize);
 	for i = 1:length(indices)
 		index = indices(i);
-		f = fix((index-1)/imSize(2))+1;
-		r = rem(index-1,imSize(2))+1;
-		mat(f,r) = zigZagArray(i);
+		mat(fix((index-1)/imSize(2))+1,rem(index-1,imSize(2))+1) = zigZagArray(i);
 	end
 	mat = reshape(mat.', imSize);
 end
