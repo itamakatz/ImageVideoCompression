@@ -1,12 +1,8 @@
-a = [ 25 0 0 -13 11 0 7 0 0 0 0 ]
-k1 = 2
-k2 = 2
-k3 = 2
-encode_equivalent_vector(a, k1,k2,k3)
+% a = [ 25 0 0 -13 11 0 7]
+% equivalent_vector(a)
+exp_golomb_test()
 % benchmark()
-% quantization(randi([-100, 100],1,10)./200, 0.02)
-% golomb_rice_test()
-% exp_golomb_test()
+
 % =========== B: ZigZag =========== %
 
 % Tested
@@ -155,12 +151,14 @@ end
 
 % =========== B: Equivalent Vector =========== %
 
-function encoded = encode_equivalent_vector(vec,k1,k2,k3)
+function new_vec = equivalent_vector(vec,k1,k2,k3)
 	integers = [];
 	runs = [];
-	last_zero = find(vec,1,'last');
+	tmp = ones(size(vec));
+	tmp(vec~=0) = 0;
+	last_zero = find(tmp,1,'last');
 	fist_time = true;
-	for i = 1:last_zero
+	for i = 1:numel(vec)
 		if(vec(i) == 0 && ~fist_time)
 			runs(end) = runs(end) + 1;
 		else
@@ -173,179 +171,47 @@ function encoded = encode_equivalent_vector(vec,k1,k2,k3)
 	assert(runs(end) == 0);
 	runs = runs(1:end-1);
 	assert(runs(end) ~= 0);
-
-	last_zero_encoded = golomb_rice(last_zero,k1);
-
-	integers_unsigned =  arrayfun(@(x) ToUnsigned(x), integers);
-	integers_encoded_cells = arrayfun(@(x) golomb_rice(x,k2),integers_unsigned, 'UniformOutput', false);
-	integers_encoded_cells = reshape(integers_encoded_cells, 1, numel(integers_encoded_cells));
-	integers_encoded = cell2mat(integers_encoded_cells);
-
-	runs_encoded_cells = arrayfun(@(x) golomb_rice(x,k3),runs, 'UniformOutput', false);
-	runs_encoded_cells = reshape(runs_encoded_cells, 1, numel(runs_encoded_cells));
-	runs_encoded = cell2mat(runs_encoded_cells);
-
-	encoded = [last_zero_encoded integers_encoded runs_encoded];
-end
-
-function vec = deencode_equivalent_vector(encoded,k1,k2,k3)
-
-	index = 1;
-	last_zero = golomb_rice_inverse(encoded,k1);
-	last_zero_length = golomb_rice_length(last_zero,k1);
-	index = index + last_zero_length;
-	
-	runs_encoded_cells = arrayfun(@(x) golomb_rice(x,k2),runs, 'UniformOutput', false);
-	runs_encoded_cells = reshape(runs_encoded_cells, 1, numel(runs_encoded_cells));
-	runs_encoded = cell2mat(runs_encoded_cells);
-
-	integers_unsigned =  arrayfun(@(x) ToUnsigned(x), integers);
-	integers_encoded_cells = arrayfun(@(x) exp_golomb(x,k3),integers_unsigned(2:end), 'UniformOutput', false);
-	integers_encoded_cells = reshape(integers_encoded_cells, 1, numel(integers_encoded_cells));
-	integers_encoded = cell2mat(integers_encoded_cells);
-	
-	encoded = [last_zero_encoded runs_encoded integers_encoded];
+	new_vec = {last_zero, integers, runs};
 end
 
 % =========== E: Equivalent Vector =========== %
 
 % =========== B: Golomb-Rice =========== %
 
-% Tested
-function codeBits = golomb_rice(num, k)
-	assert(num >= 0);
-	numCharArray = dec2bin(num);
-	% len = length(numCharArray)-1;
-	len = length(numCharArray);
-	if(len > k)
-		suffix = numCharArray(end-k+1:end);
-		remainder = bin2dec(numCharArray(1:end-k));
-		prefix = zeros([1,remainder])+'0';
-		codeBits = [prefix 1+'0' suffix];
-	else
-		suffix = zeros([1,k])+'0';
-		suffix(end-len+1:end) = numCharArray;
-		codeBits = [1+'0' suffix];
-	end
-end
+function golomb_rice()
 
-% Tested
-function num = golomb_rice_inverse(codeBits, k)
-	i = 0;
-	while (codeBits(i+1) == '0')
-		i = i +1;
-	end
-	binary_val = [dec2bin(i) codeBits(end-k+1:end)];
-	num = bin2dec(binary_val);
-end
-
-function len = golomb_rice_length(num, k)
-	len = length(golomb_rice(num, k));
-end
-
-% Tested
-function golomb_rice_test()
-	for index = 1:100
-		clc
-		a = randi([0,1000])
-		k = randi([0,7])
-		codeBits = golomb_rice(a,k)
-		assert(golomb_rice_length(a,k) == length(codeBits));
-		num = golomb_rice_inverse(codeBits, k)
-		assert(isequal(a,num))
-	end
 end
 
 % =========== E: Golomb-Rice =========== %
+
 % =========== B: Exp-Golomb =========== %
 
 % Tested
 function codeBits = exp_golomb(num, k)
-	% accepts negative numbers and simply adds a sign bit at the end. 0 is positive, 1 negative
-	if(num > 0)
-		sign_bit = 0 +'0';
-	else
-		sign_bit = 1 +'0';
-	end
-	num = abs(num);
-	% assert(num >= 0);
 	num = num+2.^k-1;
 	numCharArray = dec2bin(num+1);
 	len = length(numCharArray)-1;
 	uncutCode = [(zeros(1,len)+'0') numCharArray];
 	codeBits = uncutCode(k+1:end);
-	codeBits = [codeBits sign_bit];
 end
 
 % Tested
 function num = exp_golomb_inverse(codeBits, k)
-	% can return a negative number
-	codeBitsFull = [zeros(1,k)+'0', codeBits(1:end-1)];
+	codeBitsFull = [zeros(1,k)+'0', codeBits];
 	cutIndex = find(codeBitsFull-'0', 1, 'first');
 	codeBitsCut = codeBitsFull(cutIndex:end);
 	num = bi2de(codeBitsCut-'0','left-msb')-1;
 	num = num-2.^k+1 ;
-	if(codeBits(end) == '1')
-		num = num * -1;
-	end
 end
 
-% Tested
-function lengthArray = exp_golomb_lengths(array, k)
-	% length for the code + 1 sign bit
-	array = abs(array) % calculate length for the abs values and add one at the end
-	ys = arrayfun(@(x)floor(x/2.^k), array);
-	lengthArray = arrayfun(@(x)2*floor(log2(double(x+1)))+1, ys) + k + 1; % the last + 1 is for the sign bit
-end
-
-function exp_golomb_test()
+function success = exp_golomb_test()
 	for index = 1:100
-		clc
-		a = randi([-1000,1000])
-		k = randi([0,7])
-		codeBits = exp_golomb(a,k)
-		negative_codeBits = exp_golomb(a*-1,k)
-		assert(isequal(codeBits(1:end-1), negative_codeBits(1:end-1)));
-		assert(~isequal(codeBits(end), negative_codeBits(end)));
-		assert(exp_golomb_lengths(a,k) == length(codeBits));
-		c = exp_golomb_inverse(codeBits,k)
-		assert(isequal(a,c));
+		a = randi([-1000,1000]);
+		k = randi([0,7]);
+		b = exp_golomb(a,k)
+		c = exp_golomb_inverse(b,k)
+		success = isequal(a,c);
+		assert(success);
 	end
 end
-
-% =========== E: Exp-Golomb =========== %
-% =========== B: Unifrom Quantization =========== %
-
-function mat = quantization(mat, b)
-	mat = mat./b
-	minVal = min(abs(mat));
-	if(minVal < 1)
-		mat = round(mat / minVal)*minVal;
-	else
-		mat = round(mat);
-	end
-end
-
-% =========== E: Unifrom Quantization =========== %
-
-% =========== B: Signed / Unsigned =========== %
-
-% Tested
-function val = ToUnsigned(x)
-	if(x > 0)
-		val = 2*x-1;
-	else
-		val = -2*x;
-	end
-end
-
-% Tested
-function val = ToSigned(x)
-	if(mod(x,2))
-		val = (x+1)/2;
-	else
-		val = x/-2;
-	end
-end
-
-% =========== E: Signed / Unsigned =========== %
+% =========== E: Exp-Golomb =========== %vec
