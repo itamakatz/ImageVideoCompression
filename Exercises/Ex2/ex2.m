@@ -1,4 +1,6 @@
-a = [ 25 0 0 -13 11 0 7 0 0 0 0 ]
+% a = [ 25 0 0 -13 11 0 7 0 0 0 0 ]
+a = [ 5 0 1 0 0 ]
+
 k1 = 2
 k2 = 2
 k3 = 2
@@ -174,18 +176,21 @@ function encoded = encode_equivalent_vector(vec,k1,k2,k3)
 	runs = runs(1:end-1);
 	assert(runs(end) ~= 0);
 
-	last_zero_encoded = golomb_rice(last_zero,k1);
-
-	integers_unsigned =  arrayfun(@(x) ToUnsigned(x), integers);
-	integers_encoded_cells = arrayfun(@(x) golomb_rice(x,k2),integers_unsigned, 'UniformOutput', false);
-	integers_encoded_cells = reshape(integers_encoded_cells, 1, numel(integers_encoded_cells));
-	integers_encoded = cell2mat(integers_encoded_cells);
+	last_zero_encoded = golomb_rice(last_zero,k1)
 
 	runs_encoded_cells = arrayfun(@(x) golomb_rice(x,k3),runs, 'UniformOutput', false);
 	runs_encoded_cells = reshape(runs_encoded_cells, 1, numel(runs_encoded_cells));
 	runs_encoded = cell2mat(runs_encoded_cells);
+	runs_encoded = cast(runs_encoded,'char')
 
-	encoded = [last_zero_encoded integers_encoded runs_encoded];
+	integers_unsigned =  arrayfun(@(x) ToUnsigned(x), integers(2:end));
+	integers_encoded_cells = arrayfun(@(x) exp_golomb(x,k3),integers_unsigned, 'UniformOutput', false);
+	integers_encoded_cells = reshape(integers_encoded_cells, 1, numel(integers_encoded_cells));
+	integers_encoded = cell2mat(integers_encoded_cells)
+
+	first_integer_bits = dec2bin(integers(1))
+
+	encoded = [last_zero_encoded runs_encoded first_integer_bits integers_encoded];
 end
 
 function vec = deencode_equivalent_vector(encoded,k1,k2,k3)
@@ -200,7 +205,7 @@ function vec = deencode_equivalent_vector(encoded,k1,k2,k3)
 	runs_encoded = cell2mat(runs_encoded_cells);
 
 	integers_unsigned =  arrayfun(@(x) ToUnsigned(x), integers);
-	integers_encoded_cells = arrayfun(@(x) exp_golomb(x,k3),integers_unsigned(2:end), 'UniformOutput', false);
+	integers_encoded_cells = arrayfun(@(x) exp_golomb(x,k3),integers_unsigned, 'UniformOutput', false);
 	integers_encoded_cells = reshape(integers_encoded_cells, 1, numel(integers_encoded_cells));
 	integers_encoded = cell2mat(integers_encoded_cells);
 	
