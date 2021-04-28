@@ -1,16 +1,21 @@
 % a = [ 25 0 0 -13 11 0 7 0 0 0 0 ]
-a = [ 5 0 1 0 0 3 0 0 0 ]
-k1 = 2
-k2 = 2
-k3 = 2
-N = 3
-encoded = encode_equivalent_vector(a, k1,k2,k3)
-vec = decode_equivalent_vector(encoded, N,k1,k2,k3)
-assert(isequal(vec,a))
+% a = [ 5 0 1 0 0 3 0 0 0 ]
+% k1 = 2
+% k2 = 2
+% k3 = 2
+% N = 3
+% encoded = encode_equivalent_vector(a, k1,k2,k3)
+% vec = decode_equivalent_vector(encoded, N,k1,k2,k3)
+% assert(isequal(vec,a))
 % benchmark()
 % quantization(randi([-100, 100],1,10)./200, 0.02)
 % golomb_rice_test()
 % exp_golomb_test()
+% Q4()
+Q6()
+% equivalent_vector_test()
+% golomb_rice(8,2)
+% golomb_rice(1,2)
 % =========== B: ZigZag =========== %
 
 % Tested
@@ -87,18 +92,24 @@ end
 % Tested
 function new_val = normalize(val)
 	assert(val >= 0 && val <= 255)
-	new_val = val/256 - 0.5;
+    val = cast(val,'int8');
+	new_val = val - 128;
+	% new_val = val/256 - 0.5;
 end
 
 % Tested
 function new_val = denormalize(val)
-	assert(val >= -0.5 && val < 0.5)
-	new_val = (val + 0.5)*256;
+	assert(val >= -128 && val <= 127)
+	% assert(val >= -0.5 && val < 0.5)
+	new_val = val + 128;
+	% new_val = (val + 0.5)*256;
+    new_val = cast(new_val ,'uint8');
 end
 
 % Tested
 function success = normalize_test()
 	val = randi([0,255]);
+    val = cast(val,'uint8');
 	restore_val = denormalize(normalize(val));
 	success = isequal(restore_val, val);
 	assert(success)
@@ -144,25 +155,21 @@ function benchmark()
 		imwrite(im,'Mona-Lisa.jpg','jpg','quality',i);
 		imCompressed = imread('Mona-Lisa.jpg');
 		psnr_array(i+1) = PSNR(imCompressed,im);
-		% bmp_rate = image_rate('Mona-Lisa.bmp')
 		rate_array(i+1) =  image_rate('Mona-Lisa.jpg');
 	end
-	plot(rate_array,psnr_array)
+	plot(rate_array,psnr_array, '-o')
 	xlabel('Rate')
 	ylabel('PSNR')
 end
 
 % =========== E: Benchmark =========== %
 
-% =========== B: 6 =========== %
-
-% =========== E: 6 =========== %
-
 % =========== B: Golomb-Rice =========== %
 
 % Tested
 function codeBits = golomb_rice(num, k)
 	assert(num >= 0);
+
 	numCharArray = dec2bin(num);
 	% len = length(numCharArray)-1;
 	len = length(numCharArray);
@@ -176,6 +183,7 @@ function codeBits = golomb_rice(num, k)
 		suffix(end-len+1:end) = numCharArray;
 		codeBits = [0+'0' suffix];
 	end
+	codeBits = cast(codeBits,'char');
 end
 
 % Tested
@@ -291,13 +299,14 @@ end
 % =========== B: Unifrom Quantization =========== %
 
 function mat = quantization(mat, b)
-	mat = mat./b
-	minVal = min(abs(mat));
-	if(minVal < 1)
-		mat = round(mat / minVal)*minVal;
-	else
-		mat = round(mat);
-	end
+	mat = mat./b;
+	mat = round(mat);
+	% minVal = min(abs(mat));
+	% if(minVal < 1)
+	% 	mat = round(mat / minVal)*minVal;
+	% else
+	% 	mat = round(mat);
+	% end
 end
 
 % =========== E: Unifrom Quantization =========== %
@@ -326,48 +335,61 @@ end
 
 % =========== B: Equivalent Vector =========== %
 
-function encoded = encode_equivalent_vector(vec,k1,k2,k3)
+function encoded = encode_equivalent_vector(vec,k1,k2,k3,M)
 	integers = [];
 	runs = [];
 	last_non_zero = find(vec,1,'last');
+	if(numel(last_non_zero) == 0)
+		last_non_zero = 0;
+	end
 	fist_time = true;
 	for i = 1:last_non_zero
 		if(vec(i) == 0 && ~fist_time)
 			runs(end) = runs(end) + 1;
 		else
 			fist_time = false;
-			runs = [runs 0];
+			if(i ~= last_non_zero)
+				runs = [runs 0];
+			end
 			integers = [integers vec(i)];
 		end
 	end
 
-	assert(runs(end) == 0);
-	runs = runs(1:end-1);
-	assert(runs(end) ~= 0);
-
 	last_non_zero_encoded = golomb_rice(last_non_zero,k1);
 
-	runs_encoded_cells = arrayfun(@(x) golomb_rice(x,k3),runs, 'UniformOutput', false);
+	runs_encoded_cells = arrayfun(@(x) golomb_rice(x,k2),runs, 'UniformOutput', false); 
 	runs_encoded_cells = reshape(runs_encoded_cells, 1, numel(runs_encoded_cells));
-	runs_encoded = cell2mat(runs_encoded_cells);
+    try
+        runs_encoded = cell2mat(runs_encoded_cells);
+    catch
+        a = 0;
+    end 
 	runs_encoded = cast(runs_encoded,'char');
 
 	integers_unsigned = arrayfun(@(x) ToUnsigned(x), integers(2:end));
 	integers_encoded_cells = arrayfun(@(x) exp_golomb(x,k3), integers_unsigned, 'UniformOutput', false);
 	integers_encoded_cells = reshape(integers_encoded_cells, 1, numel(integers_encoded_cells));
-	integers_encoded = cell2mat(integers_encoded_cells)
+	integers_encoded = cell2mat(integers_encoded_cells);
 
-	first_integer_bits = dec2bin(integers(1));
-	first_integer_bits = [zeros([1, 8-length(first_integer_bits)])+'0' first_integer_bits];
+	if(last_non_zero == 0)
+		first_integer_bits = '0';
+	else
+		first_integer_bits = dec2bin(integers(1));
+	end
+	
+	first_integer_bits = [zeros([1, M-length(first_integer_bits)])+'0' first_integer_bits];
 	encoded = [last_non_zero_encoded runs_encoded first_integer_bits integers_encoded];
 end
 
-function vec = decode_equivalent_vector(encoded,N,k1,k2,k3)
+function vec = decode_equivalent_vector(encoded,N,k1,k2,k3,M)
 	sub_encoded = golomb_rice_find_prefix(encoded,k1);
 	last_non_zero = golomb_rice_inverse(sub_encoded,k1);
 	last_non_zero_length = golomb_rice_length(last_non_zero,k1);
 	encoded = encoded(last_non_zero_length+1:end);
-
+	if(last_non_zero == 0)
+		vec = zeros([1, N*N]);
+		return;
+	end
 	runs = [];
 	num_count = 1;
 	while(num_count < last_non_zero)
@@ -379,8 +401,13 @@ function vec = decode_equivalent_vector(encoded,N,k1,k2,k3)
 		runs = [runs val];
 	end
 
-	first_integer = bin2dec(encoded(1:8));
-	encoded = encoded(8+1:end);
+	first_integer_bits = encoded(1:M);
+	ii = find(first_integer_bits-'0',1,'first');
+    first_integer = typecast(uint16(bin2dec(first_integer_bits(ii:M))), 'int16');
+    if(numel(first_integer) == 0)
+        first_integer = 0;
+    end
+	encoded = encoded(M+1:end);
 	integers = zeros([1,length(runs)]);
 	for i = 1:length(runs)
 		sub_encoded = exp_golomb_find_prefix(encoded,k3);
@@ -399,4 +426,129 @@ function vec = decode_equivalent_vector(encoded,N,k1,k2,k3)
 	end
 end
 
+function equivalent_vector_test()
+	N = 8;
+	% a = zeros([1,N^2]);
+	a = [-228,-54,-28,-8,22,4,-15,-9,9,1,-7,-18,-10,-6,0,2,9,-10,2,7,0,-1,1,-15,-3,2,1,18,1,-1,-1,-20,0,-1,-1,0,0,0,1,-2,1,-2,-20,0,1,0,1,-1,-1,0,0,0,-2,0,0,1,0,1,0,0,0,0,0,0];
+	k1 = 3;
+	k2 = 2;
+	k3 = 0;
+	M = 16;
+	encoded = encode_equivalent_vector(a,k1,k2,k3,M);
+	decoded = decode_equivalent_vector(encoded,N,k1,k2,k3,M);
+	assert(isequal(decoded, a));
+end
+
 % =========== E: Equivalent Vector =========== %
+
+% =========== B: 4 =========== %
+
+function Q4()
+	N = 8;
+	k1 = 3;
+	k2 = 2;
+	k3 = 0;
+	b = 1;
+	im = imread('Mona-Lisa.bmp');
+	count = 20;
+	psnr_array = zeros([1,count]);
+	b_array = zeros([1,count]);
+	for i = 1:count
+		current_b = b*2^(i-1);
+		new_im = compress_im_Q4(im,N,k1,k2,k3,current_b);
+		psnr_array(i) = PSNR(new_im, im);
+		b_array(i) = current_b;
+	end
+
+	semilogx(b_array, psnr_array, '-o');
+end
+
+function compressed_im = compress_im_Q4(im,N,k1,k2,k3,b)
+	normalized_im = arrayfun(@(x) normalize(x),im);
+	structMat = splitMat2Struct(normalized_im, N);
+	for i = 1:size(structMat,1)
+		for j = 1:size(structMat,2)
+			submat = structMat(i,j).submat;
+			dct_vals = dct2(submat);
+			% dct_quantized = arrayfun(@(x) quantization(x,b),dct_vals);
+			dct_quantized = quantization(dct_vals,b);
+			zigzag_array = zigzag(dct_quantized);
+			new_sct_vals = izigzag(zigzag_array, size(submat));
+			new_sct_vals = new_sct_vals.*b;
+			new_submat = idct2(new_sct_vals);
+			structMat(i,j).submat = new_submat;
+		end
+	end
+
+	mat = structMat2Mat(structMat);
+	mat(mat>127) = 127;
+	mat(mat<-128) = -128;
+	compressed_im = arrayfun(@(x) denormalize(x), mat);
+
+	% imshow(im);
+	% figure()
+	% imshow(denormalized_im);
+end
+
+% =========== E: 4 =========== %
+
+% =========== B: 6 =========== %
+
+function Q6()
+	N = 8;
+	k1 = 3;
+	k2 = 2;
+	k3 = 0;
+	b = 1;
+	M = 16;
+	im = imread('Mona-Lisa.bmp');
+	count = 20;
+	psnr_array = zeros([1,count]);
+	rate_array = zeros([1,count]);
+	for i = 1:count
+		current_b = b*2^(i-1);
+		[psnr, rate] = compress_im_Q6(im,N,k1,k2,k3,current_b,M);
+		psnr_array(i) = psnr;
+		rate_array(i) = rate;
+	end
+
+	figure()
+	% semilogx(rate_array, psnr_array, '-o');
+	plot(rate_array, psnr_array, '-o');
+	xlabel('Rate')
+	ylabel('PSNR')
+end
+
+function [psnr, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
+	normalized_im = arrayfun(@(x) normalize(x),im);
+	structMat = splitMat2Struct(normalized_im, N);
+	encodeded_size = 0;
+	for i = 1:size(structMat,1)
+		for j = 1:size(structMat,2)
+			submat = structMat(i,j).submat;
+			dct_vals = dct2(submat);
+			% dct_quantized = arrayfun(@(x) quantization(x,b),dct_vals);
+			dct_quantized = quantization(dct_vals,b);
+			zigzag_array = zigzag(dct_quantized);
+			encodeded = encode_equivalent_vector(zigzag_array,k1,k2,k3,M);
+			encodeded_size = encodeded_size + length(encodeded);
+			decoded = decode_equivalent_vector(encodeded,N,k1,k2,k3,M);
+			new_sct_vals = izigzag(decoded, size(submat));
+			new_sct_vals = new_sct_vals.*b;
+			new_submat = idct2(new_sct_vals);
+			structMat(i,j).submat = new_submat;
+		end
+	end
+
+	rate = encodeded_size/(8*numel(structMat));
+	mat = structMat2Mat(structMat);
+	mat(mat>127) = 127;
+	mat(mat<-128) = -128;
+	compressed_im = arrayfun(@(x) denormalize(x), mat);
+	psnr = PSNR(compressed_im, im);
+	% imshow(im);
+	% figure()
+	% imshow(denormalized_im);
+end
+
+% =========== E: 6 =========== %
