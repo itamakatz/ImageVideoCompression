@@ -13,6 +13,7 @@
 % exp_golomb_test()
 % Q4()
 Q6()
+% Q7()
 % equivalent_vector_test()
 % golomb_rice(8,2)
 % golomb_rice(1,2)
@@ -503,23 +504,23 @@ function Q6()
 	M = 16;
 	im = imread('Mona-Lisa.bmp');
 	count = 20;
-	psnr_array = zeros([1,count]);
+	mse_array = zeros([1,count]);
 	rate_array = zeros([1,count]);
 	for i = 1:count
 		current_b = b*2^(i-1);
-		[psnr, rate] = compress_im_Q6(im,N,k1,k2,k3,current_b,M);
-		psnr_array(i) = psnr;
+		[mse_val, rate] = compress_im_Q6(im,N,k1,k2,k3,current_b,M);
+		mse_array(i) = mse_val;
 		rate_array(i) = rate;
 	end
 
 	figure()
-	% semilogx(rate_array, psnr_array, '-o');
-	plot(rate_array, psnr_array, '-o');
+	% semilogx(rate_array, mse_array, '-o');
+	plot(rate_array, mse_array, '-o');
 	xlabel('Rate')
-	ylabel('PSNR')
+	ylabel('MSE')
 end
 
-function [psnr, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
+function [mse_val, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
 	normalized_im = arrayfun(@(x) normalize(x),im);
 	structMat = splitMat2Struct(normalized_im, N);
 	encodeded_size = 0;
@@ -545,10 +546,79 @@ function [psnr, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
 	mat(mat>127) = 127;
 	mat(mat<-128) = -128;
 	compressed_im = arrayfun(@(x) denormalize(x), mat);
-	psnr = PSNR(compressed_im, im);
+	mse_val = MSE(compressed_im, im);
 	% imshow(im);
 	% figure()
 	% imshow(denormalized_im);
 end
 
 % =========== E: 6 =========== %
+% =========== B: 7 =========== %
+
+function Q7()
+	N = 8;
+	k1 = 3;
+	k2 = 2;
+	k3 = 0;
+	b = 1;
+	M = 16;
+	im = imread('Mona-Lisa.bmp');
+	count = 20;
+	mse_array = zeros([1,count]);
+	rate_array = zeros([1,count]);
+	for i = 1:count
+		current_b = b*2^(i-1);
+		[mse_val, rate] = compress_im_Q7(im,N,k1,k2,k3,current_b,M);
+		mse_array(i) = mse_val;
+		rate_array(i) = rate;
+	end
+
+	figure()
+	% semilogx(rate_array, mse_array, '-o');
+	plot(rate_array, mse_array, '-o');
+	xlabel('Rate')
+	ylabel('MSE')
+end
+
+function [mse_val, rate] = compress_im_Q7(im,N,k1,k2,k3,b,M)
+	normalized_im = arrayfun(@(x) normalize(x),im);
+	structMat = splitMat2Struct(normalized_im, N);
+	encodeded_size = 0;
+	last_dc = 0;
+	for i = 1:size(structMat,1)
+		for j = 1:size(structMat,2)
+			submat = structMat(i,j).submat;
+			dct_vals = dct2(submat);
+			if(i ~= 1 || j ~= 1)
+				current_dc = dct_vals(1,1);
+				dct_vals(1,1) = current_dc - last_dc;
+				last_dc = current_dc;
+			end
+			% dct_quantized = arrayfun(@(x) quantization(x,b),dct_vals);
+			dct_quantized = quantization(dct_vals,b);
+			zigzag_array = zigzag(dct_quantized);
+			encodeded = encode_equivalent_vector(zigzag_array,k1,k2,k3,M);
+			encodeded_size = encodeded_size + length(encodeded);
+			decoded = decode_equivalent_vector(encodeded,N,k1,k2,k3,M);
+			new_sct_vals = izigzag(decoded, size(submat));
+			new_sct_vals = new_sct_vals.*b;
+			if(i ~= 1 || j ~= 1)
+				new_sct_vals(1,1) = new_sct_vals(1,1) + last_dc;
+			end
+			new_submat = idct2(new_sct_vals);
+			structMat(i,j).submat = new_submat;
+		end
+	end
+
+	rate = encodeded_size/(8*numel(structMat));
+	mat = structMat2Mat(structMat);
+	mat(mat>127) = 127;
+	mat(mat<-128) = -128;
+	compressed_im = arrayfun(@(x) denormalize(x), mat);
+	mse_val = MSE(compressed_im, im);
+	% imshow(im);
+	% figure()
+	% imshow(denormalized_im);
+end
+
+% =========== E: 7 =========== %
