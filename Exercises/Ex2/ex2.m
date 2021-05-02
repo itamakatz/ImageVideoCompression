@@ -13,10 +13,22 @@
 % exp_golomb_test()
 % Q4()
 Q6()
-% Q7()
+Q7()
 % equivalent_vector_test()
 % golomb_rice(8,2)
 % golomb_rice(1,2)
+
+% test_dct()
+
+% count = 20
+% b = 1;
+% for i = 1:count
+% 	current_b = b*2^(i-1);
+% 	% disp(num2str(current_b,'%.4g'))
+%     disp(num2str(current_b))
+%     % disp(num2str(current_b,'%.4E'))
+% end
+
 % =========== B: ZigZag =========== %
 
 % Tested
@@ -302,12 +314,6 @@ end
 function mat = quantization(mat, b)
 	mat = mat./b;
 	mat = round(mat);
-	% minVal = min(abs(mat));
-	% if(minVal < 1)
-	% 	mat = round(mat / minVal)*minVal;
-	% else
-	% 	mat = round(mat);
-	% end
 end
 
 % =========== E: Unifrom Quantization =========== %
@@ -471,6 +477,7 @@ function compressed_im = compress_im_Q4(im,N,k1,k2,k3,b)
 		for j = 1:size(structMat,2)
 			submat = structMat(i,j).submat;
 			dct_vals = dct2(submat);
+			dct_vals = round(dct_vals);
 			% dct_quantized = arrayfun(@(x) quantization(x,b),dct_vals);
 			dct_quantized = quantization(dct_vals,b);
 			zigzag_array = zigzag(dct_quantized);
@@ -500,24 +507,46 @@ function Q6()
 	k1 = 3;
 	k2 = 2;
 	k3 = 0;
-	b = 1;
+	b = 0.1;
+	count = 48;
+	b_function = @(x) b*x;
 	M = 16;
 	im = imread('Mona-Lisa.bmp');
-	count = 20;
 	mse_array = zeros([1,count]);
 	rate_array = zeros([1,count]);
+	b_array = zeros([1,count]);
+	figure;
+	subplot(ceil(sqrt(count)),ceil(sqrt(count)),1);
+	imshow(im);
+	title('Q6 - Original Image');
 	for i = 1:count
-		current_b = b*2^(i-1);
+		disp(['Q6:' num2str(i) '/' num2str(count)])
+		current_b = b_function(i);
+		subplot(ceil(sqrt(count)),ceil(sqrt(count)),i+1);
 		[mse_val, rate] = compress_im_Q6(im,N,k1,k2,k3,current_b,M);
+		title(['b=' num2str(current_b)]);
 		mse_array(i) = mse_val;
 		rate_array(i) = rate;
+		b_array(i) = current_b;
 	end
 
 	figure()
+	subplot(1,2,1);
 	% semilogx(rate_array, mse_array, '-o');
+	plot(b_array, mse_array/rate_array, '-o');
+	xlabel('b')
+	ylabel('MSE/Rate')
+	title('Q6')
+	subplot(1,2,2);
 	plot(rate_array, mse_array, '-o');
 	xlabel('Rate')
 	ylabel('MSE')
+	title('Q6')
+	figure
+	plot(b_array, rate_array, '-o');
+	xlabel('b')
+	ylabel('Rate')
+	title('Q6 - b/rate')
 end
 
 function [mse_val, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
@@ -547,9 +576,14 @@ function [mse_val, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
 	mat(mat<-128) = -128;
 	compressed_im = arrayfun(@(x) denormalize(x), mat);
 	mse_val = MSE(compressed_im, im);
+	% figure;
+	% subplot(1,2,1)
 	% imshow(im);
-	% figure()
-	% imshow(denormalized_im);
+	% title('Q6 - Original Image')
+	% subplot(1,2,2)
+	imshow(compressed_im);
+	% title('Q6 - Compressed Image')
+	%make here your first plot
 end
 
 % =========== E: 6 =========== %
@@ -560,24 +594,47 @@ function Q7()
 	k1 = 3;
 	k2 = 2;
 	k3 = 0;
-	b = 1;
+	b = 0.1;
+	count = 48;
+	b_function = @(x) b*x;
 	M = 16;
 	im = imread('Mona-Lisa.bmp');
-	count = 20;
 	mse_array = zeros([1,count]);
 	rate_array = zeros([1,count]);
+	b_array = zeros([1,count]);
+	figure;
+	subplot(ceil(sqrt(count)),ceil(sqrt(count)),1);
+	imshow(im);
+	title('Q7 - Original Image');
+	% imshow(compressed_im);
 	for i = 1:count
-		current_b = b*2^(i-1);
+		disp(['Q7:' num2str(i) '/' num2str(count)])
+		current_b = b_function(i);
+		subplot(ceil(sqrt(count)),ceil(sqrt(count)),i+1);
 		[mse_val, rate] = compress_im_Q7(im,N,k1,k2,k3,current_b,M);
+		title(['b=' num2str(current_b)]);
 		mse_array(i) = mse_val;
 		rate_array(i) = rate;
+		b_array(i) = current_b;
 	end
 
 	figure()
+	subplot(1,2,1);
 	% semilogx(rate_array, mse_array, '-o');
+	plot(b_array, mse_array/rate_array, '-o');
+	xlabel('b')
+	ylabel('MSE/Rate')
+	title('Q7')
+	subplot(1,2,2);
 	plot(rate_array, mse_array, '-o');
 	xlabel('Rate')
 	ylabel('MSE')
+	title('Q7')
+	figure
+	plot(b_array, rate_array, '-o');
+	xlabel('b')
+	ylabel('Rate')
+	title('Q7 - b/rate')
 end
 
 function [mse_val, rate] = compress_im_Q7(im,N,k1,k2,k3,b,M)
@@ -616,9 +673,14 @@ function [mse_val, rate] = compress_im_Q7(im,N,k1,k2,k3,b,M)
 	mat(mat<-128) = -128;
 	compressed_im = arrayfun(@(x) denormalize(x), mat);
 	mse_val = MSE(compressed_im, im);
-	% imshow(im);
-	% figure()
-	% imshow(denormalized_im);
+
+	imshow(compressed_im);
 end
 
 % =========== E: 7 =========== %
+
+
+function test_dct()
+	im = imread('Mona-Lisa.bmp');
+	dct_vals = dct2(im);
+end
