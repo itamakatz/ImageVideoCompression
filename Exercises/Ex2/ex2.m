@@ -8,12 +8,12 @@
 % vec = decode_equivalent_vector(encoded, N,k1,k2,k3)
 % assert(isequal(vec,a))
 % benchmark()
-% quantization(randi([-100, 100],1,10)./200, 0.02)
 % golomb_rice_test()
 % exp_golomb_test()
+% normalize_test()
 % Q4()
 Q6()
-Q7()
+% Q7()
 % equivalent_vector_test()
 % golomb_rice(8,2)
 % golomb_rice(1,2)
@@ -105,17 +105,19 @@ end
 % Tested
 function new_val = normalize(val)
 	assert(val >= 0 && val <= 255)
-    val = cast(val,'int8');
-	new_val = val - 128;
+    % val = cast(val,'int8');
+	% new_val = val - 128;
 	% new_val = val/256 - 0.5;
+	new_val = (double(val) -128)./256;
 end
 
 % Tested
 function new_val = denormalize(val)
 	assert(val >= -128 && val <= 127)
 	% assert(val >= -0.5 && val < 0.5)
-	new_val = val + 128;
+	% new_val = val + 128;
 	% new_val = (val + 0.5)*256;
+    new_val = round(abs(double(val).*256 + 128));
     new_val = cast(new_val ,'uint8');
 end
 
@@ -170,6 +172,8 @@ function benchmark()
 		psnr_array(i+1) = PSNR(imCompressed,im);
 		rate_array(i+1) =  image_rate('Mona-Lisa.jpg');
 	end
+	hold on
+	figure()
 	plot(rate_array,psnr_array, '-o')
 	xlabel('Rate')
 	ylabel('PSNR')
@@ -309,14 +313,6 @@ function exp_golomb_test()
 end
 
 % =========== E: Exp-Golomb =========== %
-% =========== B: Unifrom Quantization =========== %
-
-function mat = quantization(mat, b)
-	mat = mat./b;
-	mat = round(mat);
-end
-
-% =========== E: Unifrom Quantization =========== %
 
 % =========== B: Signed / Unsigned =========== %
 
@@ -382,8 +378,9 @@ function encoded = encode_equivalent_vector(vec,k1,k2,k3,M)
 		first_integer_bits = '0';
 	else
 		first_integer_bits = dec2bin(integers(1));
-	end
-	
+    end
+    assert(M-length(first_integer_bits) >= 0)
+	lala = zeros([1, M-length(first_integer_bits)])+'0';
 	first_integer_bits = [zeros([1, M-length(first_integer_bits)])+'0' first_integer_bits];
 	encoded = [last_non_zero_encoded runs_encoded first_integer_bits integers_encoded];
 end
@@ -467,6 +464,8 @@ function Q4()
 		b_array(i) = current_b;
 	end
 
+	hold on
+	figure()
 	semilogx(b_array, psnr_array, '-o');
 end
 
@@ -478,8 +477,7 @@ function compressed_im = compress_im_Q4(im,N,k1,k2,k3,b)
 			submat = structMat(i,j).submat;
 			dct_vals = dct2(submat);
 			dct_vals = round(dct_vals);
-			% dct_quantized = arrayfun(@(x) quantization(x,b),dct_vals);
-			dct_quantized = quantization(dct_vals,b);
+			dct_quantized = round(dct_vals./b);
 			zigzag_array = zigzag(dct_quantized);
 			new_sct_vals = izigzag(zigzag_array, size(submat));
 			new_sct_vals = new_sct_vals.*b;
@@ -508,35 +506,35 @@ function Q6()
 	k2 = 2;
 	k3 = 0;
 	b = 0.1;
-	count = 48;
-	b_function = @(x) b*x;
-	M = 16;
+	count = 25;%25;%48;
+	M = 8;
 	im = imread('Mona-Lisa.bmp');
 	mse_array = zeros([1,count]);
+	psnr_array = zeros([1,count]);
 	rate_array = zeros([1,count]);
-	b_array = zeros([1,count]);
+	b_array=linspace(0.05,0.99,count);
 	figure;
 	subplot(ceil(sqrt(count)),ceil(sqrt(count)),1);
 	imshow(im);
 	title('Q6 - Original Image');
 	for i = 1:count
 		disp(['Q6:' num2str(i) '/' num2str(count)])
-		current_b = b_function(i);
-		subplot(ceil(sqrt(count)),ceil(sqrt(count)),i+1);
-		[mse_val, rate] = compress_im_Q6(im,N,k1,k2,k3,current_b,M);
+		current_b = b_array(i);
+		subplot(ceil(sqrt(count+1)),ceil(sqrt(count+1)),i+1);
+		[mse_val, psnr_val, rate] = compress_im_Q6(im,N,k1,k2,k3,current_b,M);
 		title(['b=' num2str(current_b)]);
 		mse_array(i) = mse_val;
+		psnr_array(i) = psnr_val;
 		rate_array(i) = rate;
 		b_array(i) = current_b;
 	end
 
 	figure()
 	subplot(1,2,1);
-	% semilogx(rate_array, mse_array, '-o');
-	plot(b_array, mse_array/rate_array, '-o');
-	xlabel('b')
-	ylabel('MSE/Rate')
-	title('Q6')
+	plot(rate_array, psnr_array, '-o');
+	xlabel('Rate')
+	ylabel('PSNR')
+	title('Q6 - PSNR')
 	subplot(1,2,2);
 	plot(rate_array, mse_array, '-o');
 	xlabel('Rate')
@@ -549,18 +547,19 @@ function Q6()
 	title('Q6 - b/rate')
 end
 
-function [mse_val, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
+function [mse_val, psnr_val, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
 	normalized_im = arrayfun(@(x) normalize(x),im);
 	structMat = splitMat2Struct(normalized_im, N);
 	encodeded_size = 0;
+	rations = [];
 	for i = 1:size(structMat,1)
 		for j = 1:size(structMat,2)
 			submat = structMat(i,j).submat;
 			dct_vals = dct2(submat);
-			% dct_quantized = arrayfun(@(x) quantization(x,b),dct_vals);
-			dct_quantized = quantization(dct_vals,b);
+			dct_quantized = round(dct_vals./b);
 			zigzag_array = zigzag(dct_quantized);
 			encodeded = encode_equivalent_vector(zigzag_array,k1,k2,k3,M);
+			rations = [rations length(encodeded)/(size(submat,1)*size(submat,2))];
 			encodeded_size = encodeded_size + length(encodeded);
 			decoded = decode_equivalent_vector(encodeded,N,k1,k2,k3,M);
 			new_sct_vals = izigzag(decoded, size(submat));
@@ -570,20 +569,15 @@ function [mse_val, rate] = compress_im_Q6(im,N,k1,k2,k3,b,M)
 		end
 	end
 
-	rate = encodeded_size/(8*numel(structMat));
+	num_pix = size(im,1)*size(im,2);
+	rate = encodeded_size/(8*num_pix);
 	mat = structMat2Mat(structMat);
-	mat(mat>127) = 127;
-	mat(mat<-128) = -128;
+	% mat(mat>127) = 127;
+	% mat(mat<-128) = -128;
 	compressed_im = arrayfun(@(x) denormalize(x), mat);
 	mse_val = MSE(compressed_im, im);
-	% figure;
-	% subplot(1,2,1)
-	% imshow(im);
-	% title('Q6 - Original Image')
-	% subplot(1,2,2)
+	psnr_val = PSNR(compressed_im, im);
 	imshow(compressed_im);
-	% title('Q6 - Compressed Image')
-	%make here your first plot
 end
 
 % =========== E: 6 =========== %
@@ -596,12 +590,12 @@ function Q7()
 	k3 = 0;
 	b = 0.1;
 	count = 48;
-	b_function = @(x) b*x;
 	M = 16;
 	im = imread('Mona-Lisa.bmp');
 	mse_array = zeros([1,count]);
+	psnr_array = zeros([1,count]);
 	rate_array = zeros([1,count]);
-	b_array = zeros([1,count]);
+	b_array=linspace(0.05,0.99,count);
 	figure;
 	subplot(ceil(sqrt(count)),ceil(sqrt(count)),1);
 	imshow(im);
@@ -609,21 +603,20 @@ function Q7()
 	% imshow(compressed_im);
 	for i = 1:count
 		disp(['Q7:' num2str(i) '/' num2str(count)])
-		current_b = b_function(i);
-		subplot(ceil(sqrt(count)),ceil(sqrt(count)),i+1);
-		[mse_val, rate] = compress_im_Q7(im,N,k1,k2,k3,current_b,M);
+		current_b = b_array(i);
+		subplot(ceil(sqrt(count+1)),ceil(sqrt(count+1)),i+1);
+		[mse_val, psnr_val, rate] = compress_im_Q7(im,N,k1,k2,k3,current_b,M);
 		title(['b=' num2str(current_b)]);
 		mse_array(i) = mse_val;
+		psnr_array(i) = psnr_val
 		rate_array(i) = rate;
-		b_array(i) = current_b;
 	end
 
 	figure()
 	subplot(1,2,1);
-	% semilogx(rate_array, mse_array, '-o');
-	plot(b_array, mse_array/rate_array, '-o');
-	xlabel('b')
-	ylabel('MSE/Rate')
+	plot(rate_array, psnr_array, '-o');
+	xlabel('Rate')
+	ylabel('PSNR')
 	title('Q7')
 	subplot(1,2,2);
 	plot(rate_array, mse_array, '-o');
@@ -651,8 +644,7 @@ function [mse_val, rate] = compress_im_Q7(im,N,k1,k2,k3,b,M)
 				dct_vals(1,1) = current_dc - last_dc;
 				last_dc = current_dc;
 			end
-			% dct_quantized = arrayfun(@(x) quantization(x,b),dct_vals);
-			dct_quantized = quantization(dct_vals,b);
+			dct_quantized = round(dct_vals./b);
 			zigzag_array = zigzag(dct_quantized);
 			encodeded = encode_equivalent_vector(zigzag_array,k1,k2,k3,M);
 			encodeded_size = encodeded_size + length(encodeded);
@@ -667,10 +659,11 @@ function [mse_val, rate] = compress_im_Q7(im,N,k1,k2,k3,b,M)
 		end
 	end
 
-	rate = encodeded_size/(8*numel(structMat));
+	num_pix = size(im,1)*size(im,2);
+	rate = encodeded_size/(8*num_pix);
 	mat = structMat2Mat(structMat);
-	mat(mat>127) = 127;
-	mat(mat<-128) = -128;
+	% mat(mat>127) = 127;
+	% mat(mat<-128) = -128;
 	compressed_im = arrayfun(@(x) denormalize(x), mat);
 	mse_val = MSE(compressed_im, im);
 
