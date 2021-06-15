@@ -42,7 +42,7 @@ b = 0.32;
 % read_images_to_video('short_bw_compressed_new.y4m')
 
 % =================== 2.2 =================== %
-compress_video_2_2('short_bw.y4m', 'compressed_2_2.y4m',b)
+compress_video_2_2('short_bw.y4m', 'compressed_2_2_2.y4m',b)
 
 % Explanation:
 % -----------------------
@@ -60,6 +60,181 @@ compress_video_2_2('short_bw.y4m', 'compressed_2_2.y4m',b)
 % Ref_{i+1} = Ref_{i} + compress(New{i+1} - R_{i})
 % Ref_{i+1} - Ref_{i} = compress(New{i+1} - R_{i})
 % -----------------------
+
+% test_find_ref_block_vec_3_1()
+
+% compress_frames_3_2('short_bw.y4m', 'compressed_3_2.y4m',b)
+% compress_frames_4('short_bw.y4m', 'compressed_4.y4m',b, 0.2)
+
+function compress_frames_3_2(path, output_path,b)
+    compress_frames_general(path, output_path,b, 0)
+end
+
+function compress_frames_4(path, output_path,b, lambda)
+    compress_frames_general(path, output_path,b, lambda)
+end
+
+
+function compress_frames_general(path, output_path,b, lambda)
+    disp('Running compress_video_3_2...')
+    frames = get_frames(path);
+    disp('Finished reading frames')
+    refs = cell(length(frames),1);
+    disp(['Compressing frame 1/' num2str(length(frames))])
+%     refs(1) = {cast(compress_frame(cell2mat(frames(1)), b),'double')};
+    refs(1) = frames(1);
+    imwrite(cast(cell2mat(frames(1)) ,'uint8'), ['Frames_3_2/frame' sprintf('%05d',1) '.bmp'], 'bmp');
+    imwrite(cast(cell2mat(refs(1)) ,'uint8'), ['Frames_3_2/refs' sprintf('%05d',1) '.bmp'], 'bmp');
+    
+    for i=2:length(frames)
+        disp(['Compressing frame: ' num2str(i) '/' num2str(length(frames))])
+%         compressed_residual = compress_frame(cell2mat(frames(i)) - cell2mat(frames(i-1)), b);
+        new_ref_im = get_moved_ref_general(cell2mat(frames(i)), cell2mat(refs(i-1)), lambda);
+
+        compressed_residual = compress_frame(cell2mat(frames(i)) - new_ref_im, b);
+        refs(i) = {new_ref_im + compressed_residual};
+        
+        imwrite(cast(compressed_residual ,'uint8'), ['Frames_3_2/residual_' sprintf('%05d',i) '.bmp'], 'bmp');
+        imwrite(cast(cell2mat(frames(i)) ,'uint8'), ['Frames_3_2/frame_' sprintf('%05d',i) '.bmp'], 'bmp');
+        imwrite(cast(cell2mat(refs(i)) ,'uint8'), ['Frames_3_2/refs_' sprintf('%05d',i) '.bmp'], 'bmp');
+    end
+
+    disp('Compressing finished.')
+    
+    out_fid = fopen(output_path, 'wb');
+    y4m_header = uint8(['YUV4MPEG2 W1920 H1080 F60:1 Ip A0:0 C420jpeg XYSCSS=420JPEG' 10]);
+    fwrite(out_fid, y4m_header, 'uint8');
+
+    for i=1:length(refs)
+        disp(['Saving frame: ' num2str(i) '/' num2str(length(refs))])
+        im = cell2mat(refs(i));
+        frame = struct;
+        frame.y = cast(im ,'double');
+        frame.cr = ones(540,960)*128;
+        frame.cb = ones(540,960)*128;
+        write_yuv_frame(out_fid, frame);
+    end
+    fclose(out_fid);
+    
+    disp(['saved to: ' output_path])
+end
+
+function new_ref_im = get_moved_ref_general(ref_im,new_im, lambda)
+    
+    d = 8;
+    [m,n] = size(ref_im);
+    rows = m/d;
+    cols = n/d;
+    
+    motion_vectors_struct(rows*cols) = struct('x',-1,'y',-1, 'original_x',-1,'original_y',-1);
+
+    [X,Y] = meshgrid(1:rows, 1:cols);
+    X = reshape(X,1,rows*cols);
+    Y = reshape(Y,1,rows*cols);
+    ALL = [X;Y];
+
+    q = parallel.pool.DataQueue;
+    parfor i = 1:length(ALL)
+        block_vec = struct;
+        current_indices = ALL(:,i)
+        block_vec.x=(current_indices(1)-1)*d+1;
+        block_vec.y=(current_indices(2)-1)*d+1;
+        if(lambda ~= 0)
+            motion_vector = find_ref_block_vec_4(ref_im, new_im, block_vec,8,lambda);
+        else
+            motion_vector = find_ref_block_vec_3_1(ref_im, new_im, block_vec,8);
+        end
+        motion_vector.original_x = block_vec.x;
+        motion_vector.original_y = block_vec.y;
+        motion_vectors_struct(i) = motion_vector
+    end
+
+    new_ref_im = zeros(size(ref_im));
+
+    for i = 1:length(ALL)
+        block_vec = struct;
+        block_vec.x=(ALL(1,i)-1)*d+1;
+        block_vec.y=(ALL(2,i)-1)*d+1;
+        motion_vector = motion_vectors_struct(i);
+        new_ref_im(block_vec.x:block_vec.x+7,block_vec.y:block_vec.y+7) = ...
+            ref_im(motion_vector.x:motion_vector.x+7,motion_vector.y:motion_vector.y+7);
+    end
+end
+
+function ref_vector = find_ref_block_vec_4(ref_im, new_im, block_vec, block_size, lambda)
+
+    check_legal = @(check_x,check_y)(check_x + block_size-1 <= size(ref_im,1) && check_y + block_size-1 <= size(ref_im,2) ...
+                                    && check_x  >= 1 && check_y >= 1);
+
+    lagrangians = [];
+    for x_offset = -block_size:block_size
+        for y_offset = -block_size:block_size
+            if(check_legal(block_vec.x+x_offset, block_vec.y+y_offset))
+                current_mse = immse(ref_im(block_vec.x:block_vec.x+block_size-1,block_vec.y:block_vec.y+block_size-1), ...
+                                new_im(block_vec.x+x_offset:block_vec.x+x_offset+block_size-1,block_vec.y+y_offset:block_vec.y+y_offset+block_size-1));
+                lx = get_exp_golomb_code(to_unsigned(x_offset),0);
+                ly = get_exp_golomb_code(to_unsigned(y_offset),0);
+                lagrangian = current_mse + lambda*(length(lx)*length(ly));
+                
+                lagrangians = [lagrangians ; block_vec.x+x_offset, block_vec.y+y_offset, lagrangian];
+            end
+        end
+    end
+
+    [C,I]  = min(lagrangians(:,3));
+    ref_vector = struct;
+    ref_vector.x = lagrangians(I(1),1);
+    ref_vector.y = lagrangians(I(1),2);
+end
+
+% TESTED
+function ref_vector = find_ref_block_vec_3_1(ref_im, new_im, block_vec, block_size)
+
+    check_legal = @(check_x,check_y)(check_x + block_size-1 <= size(ref_im,1) && check_y + block_size-1 <= size(ref_im,2) ...
+                                    && check_x  >= 1 && check_y >= 1);
+
+    all_mase = [];
+    for x_offset = -block_size:block_size
+        for y_offset = -block_size:block_size
+            if(check_legal(block_vec.x+x_offset, block_vec.y+y_offset))
+                all_mase = [all_mase ; block_vec.x+x_offset, block_vec.y+y_offset, ...
+                            immse(ref_im(block_vec.x:block_vec.x+block_size-1,block_vec.y:block_vec.y+block_size-1), ...
+                            new_im(block_vec.x+x_offset:block_vec.x+x_offset+block_size-1,block_vec.y+y_offset:block_vec.y+y_offset+block_size-1))];
+            end
+        end
+    end
+
+    [C,I]  = min(all_mase(:,3));
+    ref_vector = struct;
+    ref_vector.x = all_mase(I(1),1);
+    ref_vector.y = all_mase(I(1),2);
+end
+
+function test_find_ref_block_vec_3_1
+    a = [9,9,9,9,9,9;
+    9,9,9,9,9,9;
+    9,9,1,1,9,9;
+    9,9,1,1,9,9;
+    9,9,9,9,9,9;
+    9,9,9,9,9,9];
+
+    b = [9,9,9,9,9,9;
+    9,9,9,9,9,9;
+    9,9,9,9,9,9;
+    9,9,9,9,9,9;
+    9,9,9,9,1,1;
+    9,9,9,9,1,1];
+
+    block_vec = struct;
+    block_vec.x = 3;
+    block_vec.y = 3;
+
+    ref_vector = find_ref_block_vec_3_1(a,b,block_vec,2)
+    a(block_vec.x:block_vec.x+1, block_vec.y:block_vec.y+1)
+    b(ref_vector.x:ref_vector.x+1, ref_vector.y:ref_vector.y+1)
+    % disp(ref_vector.x)
+    % disp(ref_vector.y)
+end
 
 function compress_video_2_2(path, output_path,b)
     disp('Running compress_video_2_2...')
@@ -412,6 +587,8 @@ function result=bin_mat(mat,d)
     for i=1:a
         for j=1:b
             result(i,j).submat = cells{i,j};
+            % result(i,j).i=i;
+            % result(i,j).j=j;
         end
     end
 end
